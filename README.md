@@ -9,7 +9,10 @@ para forzar que la configuración de la app se lea desde Vault.
 vault-baseline/
 ├── .plugin/plugin.json
 ├── skills/vault-config/SKILL.md
-├── hooks/hooks.json
+├── hooks/
+│   ├── hooks.json           # comandos inlined; es lo que ejecuta OpenHands
+│   ├── stop.sh              # misma lógica que el Stop de hooks.json
+│   └── pre_tool_use.sh      # misma lógica que el PreToolUse de hooks.json
 └── image/
     ├── ruff-vault.toml      # debe vivir en /opt/baseline/ruff-vault.toml en el sandbox
     └── Dockerfile.snippet
@@ -37,3 +40,4 @@ Repos privado: agent-server ≥ 1.29.0 con credenciales en el `source`.
 
 Debe incluir `ruff`, `jq` y `/opt/baseline/ruff-vault.toml` (ver `image/`).
 Si faltan, el hook Stop bloquea el cierre de la tarea a propósito.
+El bloqueo indica cómo leer cada variable con `vault_config` (`get`, `get_bool`, `get_int`).
