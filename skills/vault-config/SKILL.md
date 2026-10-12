@@ -1,14 +1,16 @@
 ---
 name: vault-config
 description: >
-  Toda variable de configuración de la app se guarda y se obtiene desde Vault
-  en runtime. Las únicas env locales son punteros a Vault. Actívalo con
-  os.environ, getenv, .env, vault o variable de entorno.
+  Toda variable de configuración de la app se obtiene en runtime con la
+  librería vault_config (Vault, auth Kubernetes, KV v2). El código de la
+  app no lee VAULT_* ni usa os.environ. Actívalo con os.environ, getenv,
+  .env, vault o variable de entorno.
 triggers:
 - os.environ
 - getenv
 - .env
 - vault
+- vault_config
 - variable de entorno
 - Vault secrets
 - vault secrets
@@ -21,92 +23,72 @@ triggers:
 
 # Vault config
 
-**Toda** variable de configuración que normalmente leerías con `os.environ`
-o `os.getenv` se obtiene desde Vault en runtime (API keys, hosts, flags, etc.).
+**Toda** variable de configuración (API keys, hosts, flags, puertos, etc.) se
+lee con la librería `vault_config`. La librería encapsula auth Kubernetes y
+KV v2. El código de la aplicación no implementa esa lógica y no la limita a
+un archivo.
 
-No uses valores en claro en el proceso ni archivos `.env` del repo (salvo
-`.env.example` de documentación). Las únicas env locales permitidas son los
-**punteros** a Vault; el resto son campos del secreto en Vault.
+No leas `VAULT_*` ni uses `os.environ` / `os.getenv` en el código de la app.
+No pongas valores en claro en el proceso ni archivos `.env` del repo (salvo
+`.env.example` de documentación). Las únicas env locales son los **punteros**
+a Vault; los lee la librería. El resto son campos del secreto.
 
-La lectura debe vivir en `vault_config.py`. Fuera de ese archivo no uses
-`os.environ` / `os.getenv` para config de la app.
+No crees `vault_config.py` en la app. No copies el cliente HTTP de Vault.
+Python 3.10+. La librería usa solo biblioteca estándar.
+
+## Instalación
+
+Paquete `Robin-AI-Solutions-vault-config`, tag fijo:
+
+```
+pip install "git+https://github.com/Robin-AI-Solutions/vault-config@v0.1.0"
+```
+
+En `requirements.txt`:
+
+```
+Robin-AI-Solutions-vault-config @ git+https://github.com/Robin-AI-Solutions/vault-config@v0.1.0
+```
+
+Si el paquete vive en el subdirectorio `vault-config` de otro repositorio:
+
+```
+pip install "git+https://github.com/Robin-AI-Solutions/vaultlib@v0.1.0#subdirectory=vault-config"
+```
+
+## Uso
+
+```python
+from vault_config import get, get_bool, get_int
+
+DB_HOST = get("DB_HOST")
+DEBUG = get_bool("DEBUG")
+PORT = get_int("PORT")
+OTRO = get("API_KEY", secret_name="otro-secreto")
+```
+
+- `get(key, secret_name=None)` devuelve el campo como texto. Sin `secret_name` usa `VAULT_SECRET_NAME`.
+- `get_bool` y `get_int` convierten el valor. El texto `"false"` es verdadero en Python, por eso existe `get_bool`.
+- `reload()` descarta la caché y el token; la próxima lectura vuelve a Vault.
+
+Si falta un puntero o una clave, se lanza `VaultConfigError`. El mensaje nombra lo que falta y no incluye valores ni el token. No captures ese error para inventar un valor por defecto.
 
 ## Punteros (únicas env locales)
 
 | Variable | Rol |
 |----------|-----|
 | `VAULT_ADDR` | URL base de Vault |
-| `VAULT_SECRET_NAME` | Identificador del secreto a leer |
+| `VAULT_SECRET_NAME` | Secreto por defecto si `get` no recibe `secret_name` |
 | `VAULT_ROLE` | Rol de auth en Vault |
 | `VAULT_KV_MOUNT` | (opcional) mount KV; default `secret` |
-| `VAULT_SECRET_KEY` | (opcional) si solo necesitas un campo |
 
-## Patrón (`vault_config.py`)
-
-```python
-import json
-import os
-import urllib.request
-from pathlib import Path
-
-
-def _vault_data() -> dict:
-    """Auth con JWT del entorno → dict de todos los campos del secreto."""
-    addr = os.environ["VAULT_ADDR"].rstrip("/")
-    name = os.environ["VAULT_SECRET_NAME"].strip("/")
-    role = os.environ["VAULT_ROLE"]
-    mount = os.environ.get("VAULT_KV_MOUNT", "secret").strip("/")
-
-    token_dir = Path(
-        os.environ.get(
-            "VAULT_AUTH_TOKEN_PATH",
-            "/var/run/secrets/kubernetes.io/serviceaccount",
-        )
-    )
-    namespace = (token_dir / "namespace").read_text(encoding="utf-8").strip()
-    jwt = (token_dir / "token").read_text(encoding="utf-8").strip()
-
-    login = json.load(
-        urllib.request.urlopen(
-            urllib.request.Request(
-                f"{addr}/v1/auth/kubernetes/login",
-                data=json.dumps({"role": role, "jwt": jwt}).encode(),
-                headers={"Content-Type": "application/json"},
-            )
-        )
-    )
-    token = login["auth"]["client_token"]
-
-    body = json.load(
-        urllib.request.urlopen(
-            urllib.request.Request(
-                f"{addr}/v1/{mount}/data/{namespace}/{name}",
-                headers={"X-Vault-Token": token},
-            )
-        )
-    )
-    return body["data"]["data"]
-
-
-def read_vault_secret(secret_key: str) -> str:
-    """Lee un campo concreto del secreto en Vault."""
-    data = _vault_data()
-    if secret_key not in data:
-        raise KeyError(f"secret missing key {secret_key!r}")
-    return data[secret_key]
-
-
-# Ejemplos:
-# api_key = read_vault_secret("API_KEY")
-# db_host = read_vault_secret("DB_HOST")
-```
+La plataforma inyecta estos punteros. La app no los lee.
 
 ## Reglas
 
-1. **Toda** config vía Vault; fuera de `vault_config.py` no uses `os.environ` /
-   `os.getenv` para valores de la app.
-2. No crees ni edites `.env` / `.env.*` (`.env.example` sí está permitido).
-3. No imprimas, loguees ni committees el token de Vault ni los valores leídos.
-4. Prefiere stdlib (`urllib`) salvo que el proyecto ya tenga cliente Vault.
-5. Si faltan punteros o el JWT, falla claro; no inventes valores ni hardcodees.
+1. Config de la app solo con `get`, `get_bool` y `get_int`, en el módulo que necesite el valor.
+2. No uses `os.environ` / `os.getenv` en el código de la app, ni para leer `VAULT_*`.
+3. No crees ni edites `.env` / `.env.*` (`.env.example` sí está permitido).
+4. No imprimas, loguees ni commitees el token de Vault ni los valores leídos.
+5. Si faltan punteros o una clave, deja salir `VaultConfigError`. No inventes valores ni hardcodees secretos.
 6. El nombre del campo en Vault debe coincidir con la clave que la app espera.

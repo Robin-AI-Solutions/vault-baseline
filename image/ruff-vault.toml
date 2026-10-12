@@ -2,8 +2,5 @@
 select = ["TID251"]
 
 [lint.flake8-tidy-imports.banned-api]
-"os.environ".msg = "Config solo desde Vault."
-"os.getenv".msg = "Config solo desde Vault."
-
-[lint.per-file-ignores]
-"**/vault_config.py" = ["TID251"]
+"os.environ".msg = "Config solo con la librería vault_config."
+"os.getenv".msg = "Config solo con la librería vault_config."
