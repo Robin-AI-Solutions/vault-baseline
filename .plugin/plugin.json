@@ -1,0 +1,8 @@
+{
+  "name": "vault-baseline",
+  "version": "1.0.0",
+  "description": "Línea base Vault: skill de configuración + hooks que bloquean .env y os.environ fuera de vault_config.py.",
+  "author": {
+    "name": "Ruvic"
+  }
+}
