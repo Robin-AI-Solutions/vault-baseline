@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "input=$(cat)\np=$(printf '%s' \"$input\" | jq -r '.tool_input.path // \"\"')\nc=$(printf '%s' \"$input\" | jq -r '.tool_input.command // \"\"')\ncase \"$(basename \"$p\")\" in\n  .env.example) exit 0 ;;\n  .env|.env.*)\n    [ \"$c\" = view ] && exit 0\n    echo '{\"decision\":\"deny\",\"reason\":\"No se permiten .env: la config se lee de Vault.\"}'\n    exit 2 ;;\nesac\nexit 0",
+            "command": "command -v jq >/dev/null || { echo '{\"decision\":\"deny\",\"reason\":\"Falta jq en la imagen.\"}'; exit 2; }\ninput=$(cat)\np=$(printf '%s' \"$input\" | jq -r '.tool_input.path // \"\"')\nc=$(printf '%s' \"$input\" | jq -r '.tool_input.command // \"\"')\ncase \"$(basename \"$p\")\" in\n  .env.example) exit 0 ;;\n  .env|.env.*)\n    [ \"$c\" = view ] && exit 0\n    echo '{\"decision\":\"deny\",\"reason\":\"No se permiten .env: la config se lee de Vault.\"}'\n    exit 2 ;;\nesac\nexit 0",
             "timeout": 30
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$OPENHANDS_PROJECT_DIR\" || exit 0\nfor t in ruff jq; do\n  command -v \"$t\" >/dev/null || {\n    echo \"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Falta $t en la imagen.\\\"}\"\n    exit 2\n  }\ndone\nfail=\nbad=$(ruff check --config /opt/baseline/ruff-vault.toml \\\n  --ignore-noqa --output-format concise . 2>&1) || fail=1\nenvs=$(find . -type f -name '.env*' ! -name '.env.example' \\\n  -not -path './.git/*' | head -20)\nif [ -n \"$fail\" ] || [ -n \"$envs\" ]; then\n  jq -n --arg ctx \"$bad\n$envs\" '{decision:\"deny\",\n    reason:\"L\u00ednea base Vault incumplida.\", additionalContext:$ctx}'\n  exit 2\nfi\nexit 0",
+            "command": "cd \"$OPENHANDS_PROJECT_DIR\" || exit 0\nfor t in ruff jq; do\n  command -v \"$t\" >/dev/null || {\n    echo \"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Falta $t en la imagen.\\\"}\"\n    exit 2\n  }\ndone\nfail=\nbad=$(ruff check --config /opt/baseline/ruff-vault.toml \\\n  --ignore-noqa --output-format concise . 2>&1) || fail=1\nenvs=$(find . -type f -name '.env*' ! -name '.env.example' \\\n  -not -path './.git/*' | head -20)\nif [ -n \"$fail\" ] || [ -n \"$envs\" ]; then\n  jq -n --arg ctx \"$bad\n$envs\" '{decision:\"deny\",\n    reason:\"Línea base Vault incumplida.\", additionalContext:$ctx}'\n  exit 2\nfi\nexit 0",
             "timeout": 120
           }
         ]
